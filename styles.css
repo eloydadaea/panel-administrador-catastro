@@ -1,6 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap');
 
-/* ====== ESTILOS BASE Y PALETA CORPORATIVA ====== */
 body {
     margin: 0;
     padding: 0;
@@ -16,7 +15,6 @@ body {
     box-sizing: border-box;
 }
 
-/* ====== CONTENEDORES (TARJETAS BLANCAS) ====== */
 .glass-container {
     background: #ffffff;
     border-radius: 12px;
@@ -42,7 +40,6 @@ h2 {
     font-weight: 600;
 }
 
-/* ====== FORMULARIOS Y BOTONES (LOGIN Y FILTROS) ====== */
 .form-group {
     margin-bottom: 18px;
     display: flex;
@@ -108,7 +105,6 @@ button:disabled {
     cursor: not-allowed;
 }
 
-/* ====== CABECERA DASHBOARD ====== */
 .dashboard-header {
     display: flex;
     justify-content: space-between;
@@ -163,7 +159,6 @@ button:disabled {
     margin-bottom: 0;
 }
 
-/* ====== TABLA DE DATOS ====== */
 .table-responsive {
     overflow-x: auto;
 }
@@ -203,7 +198,6 @@ tbody tr:hover {
     background: #e65c00;
 }
 
-/* ====== MODAL DE FOTOS ====== */
 .modal {
     display: none;
     position: fixed;
