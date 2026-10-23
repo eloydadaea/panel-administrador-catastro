@@ -29,7 +29,9 @@
     </div>
 
     <script>
-        const supabase = window.supabase.createClient('TU_URL_DE_SUPABASE', 'TU_ANON_KEY'); // REEMPLAZAR
+        const supabaseUrl = 'https://kseaqcwhsvenxtmpqjvu.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzZWFxY3doc3Zlbnh0bXBxanZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI3NzA3NzYsImV4cCI6MjEwODM0Njc3Nn0.xb0jWWmc1AAplHZ_Whgy3d-OCvsQyKHR3W6zFpvcKvA';
+        const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
 
         // Verificar si ya está logueado para no pedir clave de nuevo
         async function checkSession() {
