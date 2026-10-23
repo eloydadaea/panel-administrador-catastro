@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Catastro - Calidad de la Medida</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- Supabase JS Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="admin-body">
+    <div class="dashboard-container">
+        <div class="dashboard-header">
+            <h2>Supervisión de Catastro de Medidores</h2>
+            <button id="btnExportar" class="btn-exportar">📥 Exportar a CSV</button>
+        </div>
+
+        <!-- Filtros -->
+        <div class="filters-card">
+            <div class="form-group half">
+                <label>Buscar Suministro</label>
+                <input type="number" id="filtroSuministro" placeholder="Ej. 10017">
+            </div>
+            <div class="form-group half">
+                <label>Filtrar por Impedimento</label>
+                <select id="filtroImpedimento">
+                    <option value="">Todos</option>
+                    <option value="DE01">DE01 - Cliente Ausente</option>
+                    <option value="DE02">DE02 - Negativa al catastro</option>
+                    <option value="DE03">DE03 - Cliente Coordinara con LDS( Fonoluz) cambio de medidor</option>
+                    <option value="DE05">DE05 - Acometida, caja, murete</option>
+                    <option value="DE06">DE06 - Caja de medidor con cerradura especial</option>
+                    <option value="DE07">DE07 - Medidor Inaccesible y/o Obstruido</option>
+                    <option value="DE11">DE11 - Medidor No ubicado en terreno</option>
+                    <option value="DE13">DE13 - Servicio electrizado mayor a 10 V</option>
+                    <option value="DE14">DE14 - Servicio retirado / cortado</option>
+                    <option value="DE15">DE15 - Sin tensión por Interrupción del servicio en la zona</option>
+                    <option value="DE17">DE17 - CNR</option>
+                    <option value="DE18">DE18 - Zona Peligrosa</option>
+                    <option value="DE20">DE20 - Medidor con tapa CPV</option>
+                    <option value="DE21">DE21 - Medición indirecta /Centralizado</option>
+                    <option value="DE22">DE22 - Predio desabitado</option>
+                    <option value="DE24">DE24 - Medidor trifasico no ingresa en caja L</option>
+                </select>
+            </div>
+            <div class="form-group half">
+                <label>&nbsp;</label>
+                <button id="btnFiltrar" style="margin-top: 0;">Aplicar Filtros</button>
+            </div>
+        </div>
+
+        <!-- Tabla de Datos -->
+        <div class="table-responsive">
+            <table id="tablaRegistros">
+                <thead>
+                    <tr>
+                        <th>Fecha y Hora</th>
+                        <th>Suministro</th>
+                        <th>Medidor / Marca</th>
+                        <th>Caja / Chapa</th>
+                        <th>Fase / Acometida</th>
+                        <th>ITM/Portafusible</th>
+                        <th>Impedimento (Sub)</th>
+                        <th>Evidencia</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Los datos se inyectarán mediante JS -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Modal para ver fotos -->
+    <div id="fotoModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3>Evidencia Fotográfica</h3>
+            <div id="galeriaFotos" class="galeria-grid"></div>
+        </div>
+    </div>
+
+    <div class="dashboard-header">
+            <h2>Supervisión de Catastro de Medidores</h2>
+            <div style="display: flex; gap: 10px;">
+                <button id="btnExportar" class="btn-exportar">📥 Exportar a CSV</button>
+                <button onclick="cerrarSesion()" style="background: #dc3545; width: auto; margin: 0; padding: 10px 20px;">Cerrar Sesión</button>
+            </div>
+        </div>
+        
+    <script src="admin.js"></script>
+</body>
+</html>

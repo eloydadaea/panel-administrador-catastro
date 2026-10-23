@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acceso - Administrador</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="admin-body" style="align-items: center; min-height: 100vh; display: flex;">
+    <div class="glass-container" style="max-width: 400px; margin: auto;">
+        <h2>Bienvenido de vuelta!</h2>
+        <p style="text-align: center; font-size: 0.85rem; color: #666; margin-bottom: 20px;">
+            Ingresa tus credenciales proporcionadas por el especialista encargado de la plataforma.
+        </p>
+        
+        <form id="loginForm">
+            <div class="form-group">
+                <label>Usuario (Correo):</label>
+                <input type="email" id="email" required placeholder="correo@ejemplo.com">
+            </div>
+            <div class="form-group">
+                <label>Contraseña:</label>
+                <input type="password" id="password" required placeholder="********">
+            </div>
+            <button type="submit" id="btnLogin">Ingresar</button>
+            <p id="errorMsg" style="color: red; font-size: 0.8rem; text-align: center; display: none;"></p>
+        </form>
+    </div>
+
+    <script>
+        const supabase = window.supabase.createClient('TU_URL_DE_SUPABASE', 'TU_ANON_KEY'); // REEMPLAZAR
+
+        // Verificar si ya está logueado para no pedir clave de nuevo
+        async function checkSession() {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) window.location.href = 'admin.html';
+        }
+        checkSession();
+
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('btnLogin');
+            const errorMsg = document.getElementById('errorMsg');
+            
+            btn.disabled = true;
+            btn.textContent = 'Verificando...';
+            errorMsg.style.display = 'none';
+
+            const { data, error } = await supabase.auth.signInWithPassword({
+                email: document.getElementById('email').value,
+                password: document.getElementById('password').value
+            });
+
+            if (error) {
+                errorMsg.textContent = 'Credenciales incorrectas.';
+                errorMsg.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = 'Ingresar';
+            } else {
+                window.location.href = 'admin.html';
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,260 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap');
+
+/* ====== ESTILOS BASE Y PALETA CORPORATIVA ====== */
+body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Poppins', sans-serif;
+    background: linear-gradient(135deg, #FFD100, #F37021);
+    color: #333333;
+    min-height: 100vh;
+}
+
+.admin-body {
+    display: block; 
+    padding: 30px;
+    box-sizing: border-box;
+}
+
+/* ====== CONTENEDORES (TARJETAS BLANCAS) ====== */
+.glass-container {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 30px;
+    width: 100%;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+}
+
+.dashboard-container {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 30px;
+    width: 100%;
+    max-width: 1200px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    margin: 0 auto;
+}
+
+h2 {
+    text-align: center;
+    margin-top: 0;
+    color: #283583;
+    font-weight: 600;
+}
+
+/* ====== FORMULARIOS Y BOTONES (LOGIN Y FILTROS) ====== */
+.form-group {
+    margin-bottom: 18px;
+    display: flex;
+    flex-direction: column;
+}
+
+.form-row {
+    display: flex;
+    gap: 15px;
+}
+
+.half {
+    flex: 1;
+}
+
+label {
+    font-size: 0.9rem;
+    margin-bottom: 6px;
+    color: #555555;
+    font-weight: 500;
+}
+
+input, select {
+    font-family: 'Poppins', sans-serif;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid #cccccc;
+    background: #ffffff;
+    color: #333333;
+    font-size: 0.95rem;
+    transition: all 0.3s ease;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+input:focus, select:focus {
+    outline: none;
+    border-color: #283583;
+    box-shadow: 0 0 0 2px rgba(40, 53, 131, 0.2);
+}
+
+button {
+    font-family: 'Poppins', sans-serif;
+    background: #283583;
+    color: #ffffff;
+    font-weight: 600;
+    border: none;
+    padding: 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s;
+    font-size: 1rem;
+    width: 100%;
+    margin-top: 10px;
+}
+
+button:hover:not(:disabled) {
+    background: #1d2660;
+}
+
+button:disabled {
+    background: #cccccc;
+    cursor: not-allowed;
+}
+
+/* ====== CABECERA DASHBOARD ====== */
+.dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap; 
+    gap: 15px;
+    margin-bottom: 25px;
+    border-bottom: 2px solid #f0f0f0;
+    padding-bottom: 15px;
+}
+
+.dashboard-header h2 {
+    margin: 0;
+    font-size: 1.5rem;
+    text-align: left;
+}
+
+.dashboard-header .btn-exportar,
+.dashboard-header button {
+    width: auto !important; 
+    margin: 0;
+    padding: 10px 20px;
+}
+
+.btn-exportar {
+    background: #4caf50;
+}
+
+.btn-exportar:hover {
+    background: #43a047;
+}
+
+.filters-card {
+    display: flex;
+    gap: 15px;
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+
+.filters-card .form-group {
+    flex: 1;
+    min-width: 200px;
+}
+
+.filters-card button {
+    width: auto !important;
+    padding: 12px 25px;
+    margin-bottom: 0;
+}
+
+/* ====== TABLA DE DATOS ====== */
+.table-responsive {
+    overflow-x: auto;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+th, td {
+    padding: 12px 15px;
+    text-align: left;
+    border-bottom: 1px solid #eeeeee;
+}
+
+th {
+    background: #283583;
+    color: #ffffff;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+tbody tr:hover {
+    background-color: #fff9e6;
+}
+
+.btn-fotos {
+    background: #F37021;
+    padding: 6px 12px;
+    font-size: 0.8rem;
+    width: auto !important;
+    margin: 0;
+}
+
+.btn-fotos:hover {
+    background: #e65c00;
+}
+
+/* ====== MODAL DE FOTOS ====== */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.8);
+}
+
+.modal-content {
+    background-color: #fefefe;
+    margin: 5% auto;
+    padding: 20px;
+    border-radius: 12px;
+    width: 80%;
+    max-width: 800px;
+    position: relative;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.close {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.close:hover {
+    color: #333;
+}
+
+.galeria-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 15px;
+    margin-top: 15px;
+}
+
+.galeria-grid img {
+    width: 100%;
+    height: 200px;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+    transition: transform 0.2s;
+}
+
+.galeria-grid img:hover {
+    transform: scale(1.02);
+}
