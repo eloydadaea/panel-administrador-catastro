@@ -1,9 +1,9 @@
 const supabaseUrl = 'https://kseaqcwhsvenxtmpqjvu.supabase.co'; 
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzZWFxY3doc3Zlbnh0bXBxanZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI3NzA3NzYsImV4cCI6MjEwODM0Njc3Nn0.xb0jWWmc1AAplHZ_Whgy3d-OCvsQyKHR3W6zFpvcKvA'; 
-const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+const clienteSupabase = window.supabase.createClient(supabaseUrl, supabaseKey);
 
 async function verificarAcceso() {
-    const { data: { session }, error } = await supabase.auth.getSession();
+    const { data: { session }, error } = await clienteSupabase.auth.getSession();
     
     if (!session || error) {
         window.location.href = 'index.html'; 
@@ -12,14 +12,14 @@ async function verificarAcceso() {
 verificarAcceso();
 
 async function cerrarSesion() {
-    await supabase.auth.signOut();
+    await clienteSupabase.auth.signOut();
     window.location.href = 'index.html'; 
 }
 
 let registrosGlobales = [];
 
 async function cargarRegistros() {
-    const { data, error } = await supabase
+    const { data, error } = await clienteSupabase
         .from('registros_catastro')
         .select('*, suministros(medidor, marca_nombre)')
         .order('creado_en', { ascending: false });
