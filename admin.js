@@ -7,7 +7,7 @@ async function verificarAcceso() {
     const { data: { session }, error } = await supabase.auth.getSession();
     
     if (!session || error) {
-        window.location.href = 'login.html'; // Expulsa al usuario no autenticado
+        window.location.href = 'index.html'; // CORREGIDO: Redirige al nuevo index
     }
 }
 verificarAcceso();
@@ -15,7 +15,7 @@ verificarAcceso();
 // === CERRAR SESIÓN ===
 async function cerrarSesion() {
     await supabase.auth.signOut();
-    window.location.href = 'login.html';
+    window.location.href = 'index.html'; // CORREGIDO: Redirige al nuevo index
 }
 
 let registrosGlobales = [];
