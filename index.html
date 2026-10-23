@@ -33,7 +33,6 @@
         const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzZWFxY3doc3Zlbnh0bXBxanZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI3NzA3NzYsImV4cCI6MjEwODM0Njc3Nn0.xb0jWWmc1AAplHZ_Whgy3d-OCvsQyKHR3W6zFpvcKvA';
         const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
 
-        // Verificar si ya está logueado para no pedir clave de nuevo
         async function checkSession() {
             const { data: { session } } = await supabase.auth.getSession();
             if (session) window.location.href = 'admin.html';
@@ -55,7 +54,7 @@
             });
 
             if (error) {
-                errorMsg.textContent = 'Credenciales incorrectas.';
+                errorMsg.textContent = error.message; 
                 errorMsg.style.display = 'block';
                 btn.disabled = false;
                 btn.textContent = 'Ingresar';
