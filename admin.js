@@ -2,26 +2,28 @@ const supabaseUrl = 'https://kseaqcwhsvenxtmpqjvu.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzZWFxY3doc3Zlbnh0bXBxanZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI3NzA3NzYsImV4cCI6MjEwODM0Njc3Nn0.xb0jWWmc1AAplHZ_Whgy3d-OCvsQyKHR3W6zFpvcKvA'; 
 const clienteSupabase = window.supabase.createClient(supabaseUrl, supabaseKey);
 
+// === PROTECCIÓN DE RUTA ===
 async function verificarAcceso() {
     const { data: { session }, error } = await clienteSupabase.auth.getSession();
-    
     if (!session || error) {
         window.location.href = 'index.html'; 
     }
 }
 verificarAcceso();
 
+// === CERRAR SESIÓN ===
 async function cerrarSesion() {
     await clienteSupabase.auth.signOut();
-    window.location.href = 'index.html'; 
+    window.location.href = 'index.html';
 }
 
 let registrosGlobales = [];
 
 async function cargarRegistros() {
+    // CORRECCIÓN: Se solicitan las nuevas columnas de la tabla suministros
     const { data, error } = await clienteSupabase
         .from('registros_catastro')
-        .select('*, suministros(medidor, marca_nombre)')
+        .select('*, suministros(medidor_actual, distrito, direccion)')
         .order('creado_en', { ascending: false });
 
     if (error) {
@@ -44,7 +46,12 @@ function renderizarTabla(datos) {
 
     datos.forEach((reg, index) => {
         const fecha = new Date(reg.creado_en).toLocaleString('es-PE');
-        const medidorInfo = reg.suministros ? `${reg.suministros.medidor} <br><small>${reg.suministros.marca_nombre}</small>` : 'N/A';
+        
+        // CORRECCIÓN: Mostrar Medidor Actual y Distrito
+        const medidorInfo = reg.suministros 
+            ? `${reg.suministros.medidor_actual || 'S/D'} <br><small>${reg.suministros.distrito || 'S/D'}</small>` 
+            : 'N/A';
+            
         const submotivo = reg.submotivo_cod ? ` - ${reg.submotivo_cod}` : '';
         const itm = reg.itm_portafusible || 'N/A';
         
@@ -68,6 +75,7 @@ function renderizarTabla(datos) {
     });
 }
 
+// === LÓGICA DE FILTROS ===
 document.getElementById('btnFiltrar').addEventListener('click', () => {
     const sumFiltro = document.getElementById('filtroSuministro').value;
     const impFiltro = document.getElementById('filtroImpedimento').value;
@@ -81,20 +89,25 @@ document.getElementById('btnFiltrar').addEventListener('click', () => {
     renderizarTabla(filtrados);
 });
 
+// === EXPORTAR A CSV (EXCEL) ===
 document.getElementById('btnExportar').addEventListener('click', () => {
     if(registrosGlobales.length === 0) return alert('No hay datos para exportar');
     
     let csvContent = "data:text/csv;charset=utf-8,";
-    csvContent += "Fecha,Suministro,Medidor,Marca,Tipo Caja,Tipo Chapa,Fase,Acometida,ITM,Impedimento,Submotivo\n";
+    
+    // CORRECCIÓN: Nuevas cabeceras para el Excel
+    csvContent += "Fecha,Suministro,Medidor Actual,Distrito,Direccion,Tipo Caja,Tipo Chapa,Fase,Acometida,ITM,Impedimento,Submotivo\n";
 
     registrosGlobales.forEach(reg => {
         const fecha = new Date(reg.creado_en).toLocaleString('es-PE').replace(',', '');
-        const med = reg.suministros ? reg.suministros.medidor : '';
-        const marca = reg.suministros ? reg.suministros.marca_nombre : '';
-        const itm = reg.itm_portafusible ? reg.itm_portafusible : '';
-        const sub = reg.submotivo_cod ? reg.submotivo_cod : '';
+        const med = reg.suministros?.medidor_actual || '';
+        const distrito = reg.suministros?.distrito || '';
+        const direccion = reg.suministros?.direccion ? reg.suministros.direccion.replace(/,/g, ' ') : ''; // Quitamos comas para no romper el CSV
         
-        let row = `${fecha},${reg.suministro},${med},${marca},${reg.tipo_caja},${reg.tipo_chapa},${reg.fase},${reg.tipo_acometida},${itm},${reg.impedimento_cod},${sub}`;
+        const itm = reg.itm_portafusible || '';
+        const sub = reg.submotivo_cod || '';
+        
+        let row = `${fecha},${reg.suministro},${med},${distrito},${direccion},${reg.tipo_caja},${reg.tipo_chapa},${reg.fase},${reg.tipo_acometida},${itm},${reg.impedimento_cod},${sub}`;
         csvContent += row + "\n";
     });
 
@@ -107,6 +120,7 @@ document.getElementById('btnExportar').addEventListener('click', () => {
     document.body.removeChild(link);
 });
 
+// === MODAL DE FOTOS ===
 const modal = document.getElementById("fotoModal");
 const spanClose = document.getElementsByClassName("close")[0];
 const galeriaGrid = document.getElementById("galeriaFotos");
@@ -132,4 +146,5 @@ window.onclick = function(event) {
     }
 }
 
+// Inicializar
 cargarRegistros();
