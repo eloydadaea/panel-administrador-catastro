@@ -5,14 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard Catastro - Calidad de la Medida</title>
     <link rel="stylesheet" href="styles.css">
-    <!-- Supabase JS Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body class="admin-body">
     <div class="dashboard-container">
         <div class="dashboard-header">
             <h2>Supervisión de Catastro de Medidores</h2>
-            <button id="btnExportar" class="btn-exportar">📥 Exportar a CSV</button>
+            <div style="display: flex; gap: 10px;">
+                <button id="btnExportar" class="btn-exportar">📥 Exportar a CSV</button>
+                <button onclick="cerrarSesion()" style="background: #dc3545; width: auto; margin: 0; padding: 10px 20px;">Cerrar Sesión</button>
+            </div>
         </div>
 
         <!-- Filtros -->
@@ -56,7 +58,7 @@
                     <tr>
                         <th>Fecha y Hora</th>
                         <th>Suministro</th>
-                        <th>Medidor / Marca</th>
+                        <th>Medidor / Distrito</th>
                         <th>Caja / Chapa</th>
                         <th>Fase / Acometida</th>
                         <th>ITM/Portafusible</th>
@@ -65,7 +67,6 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <!-- Los datos se inyectarán mediante JS -->
                 </tbody>
             </table>
         </div>
@@ -79,15 +80,7 @@
             <div id="galeriaFotos" class="galeria-grid"></div>
         </div>
     </div>
-
-    <div class="dashboard-header">
-            <h2>Supervisión de Catastro de Medidores</h2>
-            <div style="display: flex; gap: 10px;">
-                <button id="btnExportar" class="btn-exportar">📥 Exportar a CSV</button>
-                <button onclick="cerrarSesion()" style="background: #dc3545; width: auto; margin: 0; padding: 10px 20px;">Cerrar Sesión</button>
-            </div>
-        </div>
-        
+    
     <script src="admin.js"></script>
 </body>
 </html>
