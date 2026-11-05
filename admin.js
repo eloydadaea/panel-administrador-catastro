@@ -19,9 +19,8 @@ async function cerrarSesion() {
 
 let registrosGlobales = [];
 
-// === CARGAR Y UNIR DATOS MANUALMENTE EN BLOQUES ===
+// === CARGAR Y UNIR DATOS MANUALMENTE ===
 async function cargarRegistros() {
-    // 1. Traer solo los registros_catastro
     const { data: registros, error: errorRegistros } = await clienteSupabase
         .from('registros_catastro')
         .select('*')
@@ -32,36 +31,32 @@ async function cargarRegistros() {
         return;
     }
 
-    // 2. Extraer los números de suministro únicos y convertirlos a texto
-    const suministrosUnicos = [...new Set(registros.map(r => String(r.suministro)))].filter(s => s && s !== 'null');
+    // Obtenemos los suministros únicos asegurándonos de que no haya nulos
+    const suministrosUnicos = [...new Set(registros.map(r => r.suministro))].filter(Boolean);
 
     let suministrosData = [];
 
-    // 3. Traer la información en bloques (Chunks) para evitar el error de límite de URL de Supabase
+    // Pedimos la data a Supabase en bloques para no saturar la petición
     if (suministrosUnicos.length > 0) {
-        const tamanoBloque = 150; 
-        
-        for (let i = 0; i < suministrosUnicos.length; i += tamanoBloque) {
-            const bloque = suministrosUnicos.slice(i, i + tamanoBloque);
+        for (let i = 0; i < suministrosUnicos.length; i += 100) {
+            const bloque = suministrosUnicos.slice(i, i + 100);
             
-            const { data: suministros, error: errorSuministros } = await clienteSupabase
+            const { data: bloqueDatos, error: errorSuministros } = await clienteSupabase
                 .from('suministros')
                 .select('suministro, medidor_actual, distrito, direccion, anio_fabricacion, numero_medidor, marca')
                 .in('suministro', bloque);
 
             if (errorSuministros) {
-                console.error(`Error al cargar bloque ${i}:`, errorSuministros);
-            } else if (suministros) {
-                suministrosData = suministrosData.concat(suministros);
+                console.error(`Error cargando bloque de suministros:`, errorSuministros);
+            } else if (bloqueDatos) {
+                suministrosData.push(...bloqueDatos);
             }
         }
     }
 
-    // 4. Unir ambas tablas haciendo match estricto como String
+    // Cruzamos la información (el "==" doble permite unir números con texto sin fallar)
     registrosGlobales = registros.map(reg => {
-        const sumStr = String(reg.suministro);
-        const infoSuministro = suministrosData.find(s => String(s.suministro) === sumStr);
-        
+        const infoSuministro = suministrosData.find(s => s.suministro == reg.suministro);
         return {
             ...reg,
             suministros: infoSuministro || {} 
@@ -82,10 +77,9 @@ function renderizarTabla(datos) {
 
     datos.forEach((reg, index) => {
         const fecha = new Date(reg.creado_en).toLocaleString('es-PE');
-        
-        const datosSum = reg.suministros;
+        const datosSum = reg.suministros || {};
 
-        const medidorInfo = datosSum && datosSum.distrito 
+        const medidorInfo = datosSum.distrito 
             ? `${datosSum.medidor_actual || 'S/D'} <br><small>${datosSum.distrito || 'S/D'}</small>` 
             : 'N/A';
             
@@ -130,19 +124,17 @@ document.getElementById('btnFiltrar').addEventListener('click', () => {
 document.getElementById('btnExportar').addEventListener('click', () => {
     if(registrosGlobales.length === 0) return alert('No hay datos para exportar');
     
-    // BOM para los acentos en Excel
     let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
-    
     csvContent += "Creado En,Técnico,Suministro,Distrito,Direccion,Año Fabricación,Nro Medidor,Marca,Medidor Actual,Tipo Caja,Tipo Chapa,Fase,Acometida,ITM,Impedimento,Submotivo\n";
 
     registrosGlobales.forEach(reg => {
         const creado_en = reg.creado_en ? new Date(reg.creado_en).toLocaleString('es-PE').replace(',', '') : '';
         const tecnico = reg.tecnico || '';
-        
         const datosSum = reg.suministros || {};
 
         const distrito = datosSum.distrito || '';
-        const direccion = datosSum.direccion ? datosSum.direccion.replace(/,/g, ' ').replace(/\n/g, ' ') : ''; 
+        const dirRaw = datosSum.direccion || '';
+        const direccion = dirRaw.replace(/,/g, ' ').replace(/\n/g, ' '); 
         const anio_fabricacion = datosSum.anio_fabricacion || '';
         const numero_medidor = datosSum.numero_medidor || '';
         const marca = datosSum.marca || '';
@@ -172,7 +164,7 @@ document.getElementById('btnExportarFotos').addEventListener('click', async () =
     const btn = document.getElementById('btnExportarFotos');
     const textoOriginal = btn.innerHTML;
     
-    btn.innerHTML = '⏳ Generando ZIP (Puede demorar)...';
+    btn.innerHTML = '⏳ Generando ZIP...';
     btn.disabled = true;
     btn.style.opacity = '0.7';
 
@@ -195,7 +187,7 @@ document.getElementById('btnExportarFotos').addEventListener('click', async () =
                             const nombreArchivo = `foto_${index + 1}.${extension}`;
                             carpetaSuministro.file(nombreArchivo, blob);
                         })
-                        .catch(err => console.error(`Error al descargar imagen del suministro ${reg.suministro}:`, err));
+                        .catch(err => console.error(`Error foto suministro ${reg.suministro}:`, err));
 
                     promesasFetch.push(promesa);
                 });
@@ -205,7 +197,6 @@ document.getElementById('btnExportarFotos').addEventListener('click', async () =
         await Promise.all(promesasFetch);
 
         const contenidoZip = await zip.generateAsync({ type: "blob" });
-        
         const link = document.createElement("a");
         link.href = URL.createObjectURL(contenidoZip);
         link.download = `Fotos_Suministros_${new Date().toISOString().split('T')[0]}.zip`;
