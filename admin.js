@@ -19,21 +19,54 @@ async function cerrarSesion() {
 
 let registrosGlobales = [];
 
+// === CARGAR Y UNIR DATOS MANUALMENTE ===
 async function cargarRegistros() {
-    // CORRECCIÓN: Agregamos anio_fabricacion, numero_medidor y marca a la consulta
-    const { data, error } = await clienteSupabase
+    // 1. Traer solo los registros_catastro
+    const { data: registros, error: errorRegistros } = await clienteSupabase
         .from('registros_catastro')
-        .select('*, suministros(medidor_actual, distrito, direccion, anio_fabricacion, numero_medidor, marca)')
+        .select('*')
         .order('creado_en', { ascending: false });
 
-    if (error) {
-        console.error(error);
+    if (errorRegistros) {
+        console.error("Error al cargar registros:", errorRegistros);
         return;
     }
 
-    registrosGlobales = data;
+    // 2. Extraer todos los números de suministro únicos de esos registros
+    const suministrosUnicos = [...new Set(registros.map(r => r.suministro))].filter(s => s != null);
+
+    let suministrosData = [];
+
+    // 3. Traer la información de la tabla 'suministros' SOLO para esos números
+    if (suministrosUnicos.length > 0) {
+        const { data: suministros, error: errorSuministros } = await clienteSupabase
+            .from('suministros')
+            .select('suministro, medidor_actual, distrito, direccion, anio_fabricacion, numero_medidor, marca')
+            .in('suministro', suministrosUnicos); // Filtra para no descargar toda la base de datos
+
+        if (errorSuministros) {
+            console.error("Error al cargar tabla suministros:", errorSuministros);
+        } else {
+            suministrosData = suministros;
+        }
+    }
+
+    // 4. Unir ambas tablas (Hacer el Match manualmente)
+    registrosGlobales = registros.map(reg => {
+        // Buscamos si existe el suministro en la segunda tabla
+        const infoSuministro = suministrosData.find(s => s.suministro == reg.suministro);
+        
+        // Retornamos el registro combinando la info (si no hay, agregamos un objeto vacío)
+        return {
+            ...reg,
+            suministros: infoSuministro || {} 
+        };
+    });
+
+    // 5. Renderizar la tabla con los datos ya cruzados
     renderizarTabla(registrosGlobales);
 }
+
 function renderizarTabla(datos) {
     const tbody = document.querySelector('#tablaRegistros tbody');
     tbody.innerHTML = '';
@@ -46,9 +79,10 @@ function renderizarTabla(datos) {
     datos.forEach((reg, index) => {
         const fecha = new Date(reg.creado_en).toLocaleString('es-PE');
         
-        // CORRECCIÓN: Mostrar Medidor Actual y Distrito
-        const medidorInfo = reg.suministros 
-            ? `${reg.suministros.medidor_actual || 'S/D'} <br><small>${reg.suministros.distrito || 'S/D'}</small>` 
+        const datosSum = reg.suministros;
+
+        const medidorInfo = datosSum && datosSum.distrito 
+            ? `${datosSum.medidor_actual || 'S/D'} <br><small>${datosSum.distrito || 'S/D'}</small>` 
             : 'N/A';
             
         const submotivo = reg.submotivo_cod ? ` - ${reg.submotivo_cod}` : '';
@@ -92,28 +126,27 @@ document.getElementById('btnFiltrar').addEventListener('click', () => {
 document.getElementById('btnExportar').addEventListener('click', () => {
     if(registrosGlobales.length === 0) return alert('No hay datos para exportar');
     
-    let csvContent = "data:text/csv;charset=utf-8,";
+    // BOM para los acentos en Excel
+    let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
     
-    // 1. Agregamos las nuevas cabeceras correspondientes a la tabla suministros
     csvContent += "Creado En,Técnico,Suministro,Distrito,Direccion,Año Fabricación,Nro Medidor,Marca,Medidor Actual,Tipo Caja,Tipo Chapa,Fase,Acometida,ITM,Impedimento,Submotivo\n";
 
     registrosGlobales.forEach(reg => {
         const creado_en = reg.creado_en ? new Date(reg.creado_en).toLocaleString('es-PE').replace(',', '') : '';
         const tecnico = reg.tecnico || '';
         
-        // 2. Extraemos los datos de la tabla relacionada 'suministros'
-        const distrito = reg.suministros?.distrito || '';
-        const direccion = reg.suministros?.direccion ? reg.suministros.direccion.replace(/,/g, ' ') : ''; 
-        const anio_fabricacion = reg.suministros?.anio_fabricacion || '';
-        const numero_medidor = reg.suministros?.numero_medidor || '';
-        const marca = reg.suministros?.marca || '';
-        const med_actual = reg.suministros?.medidor_actual || '';
+        const datosSum = reg.suministros || {};
+
+        const distrito = datosSum.distrito || '';
+        const direccion = datosSum.direccion ? datosSum.direccion.replace(/,/g, ' ') : ''; 
+        const anio_fabricacion = datosSum.anio_fabricacion || '';
+        const numero_medidor = datosSum.numero_medidor || '';
+        const marca = datosSum.marca || '';
+        const med_actual = datosSum.medidor_actual || '';
         
-        // Datos propios de la tabla 'registros_catastro'
         const itm = reg.itm_portafusible || '';
         const sub = reg.submotivo_cod || '';
         
-        // 3. Armamos la fila respetando el orden de las cabeceras
         let row = `${creado_en},${tecnico},${reg.suministro},${distrito},${direccion},${anio_fabricacion},${numero_medidor},${marca},${med_actual},${reg.tipo_caja},${reg.tipo_chapa},${reg.fase},${reg.tipo_acometida},${itm},${reg.impedimento_cod},${sub}`;
         
         csvContent += row + "\n";
@@ -135,7 +168,6 @@ document.getElementById('btnExportarFotos').addEventListener('click', async () =
     const btn = document.getElementById('btnExportarFotos');
     const textoOriginal = btn.innerHTML;
     
-    // Cambiar estado del botón para indicar que está procesando
     btn.innerHTML = '⏳ Generando ZIP (Puede demorar)...';
     btn.disabled = true;
     btn.style.opacity = '0.7';
@@ -144,13 +176,10 @@ document.getElementById('btnExportarFotos').addEventListener('click', async () =
         const zip = new JSZip();
         const promesasFetch = [];
 
-        // Recorrer todos los registros globales
         registrosGlobales.forEach(reg => {
             if (reg.fotos_urls && reg.fotos_urls.length > 0) {
-                // Crear una carpeta con el número del suministro
                 const carpetaSuministro = zip.folder(reg.suministro.toString());
 
-                // Iterar sobre las URLs de las fotos de este registro
                 reg.fotos_urls.forEach((url, index) => {
                     const promesa = fetch(url)
                         .then(response => {
@@ -158,11 +187,8 @@ document.getElementById('btnExportarFotos').addEventListener('click', async () =
                             return response.blob();
                         })
                         .then(blob => {
-                            // Extraer extensión de la URL (usualmente .jpg o .png)
                             const extension = url.split('.').pop().split('?')[0] || 'jpg';
                             const nombreArchivo = `foto_${index + 1}.${extension}`;
-                            
-                            // Guardar el blob de la imagen en la carpeta correspondiente
                             carpetaSuministro.file(nombreArchivo, blob);
                         })
                         .catch(err => console.error(`Error al descargar imagen del suministro ${reg.suministro}:`, err));
@@ -172,13 +198,10 @@ document.getElementById('btnExportarFotos').addEventListener('click', async () =
             }
         });
 
-        // Esperar a que TODAS las imágenes se hayan descargado
         await Promise.all(promesasFetch);
 
-        // Generar el archivo ZIP
         const contenidoZip = await zip.generateAsync({ type: "blob" });
         
-        // Forzar la descarga en el navegador
         const link = document.createElement("a");
         link.href = URL.createObjectURL(contenidoZip);
         link.download = `Fotos_Suministros_${new Date().toISOString().split('T')[0]}.zip`;
@@ -191,7 +214,6 @@ document.getElementById('btnExportarFotos').addEventListener('click', async () =
         console.error("Error general generando el ZIP: ", error);
         alert('Ocurrió un error al intentar generar el archivo ZIP.');
     } finally {
-        // Restaurar el botón
         btn.innerHTML = textoOriginal;
         btn.disabled = false;
         btn.style.opacity = '1';
