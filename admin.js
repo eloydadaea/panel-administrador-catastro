@@ -19,7 +19,7 @@ async function cerrarSesion() {
 
 let registrosGlobales = [];
 
-// === CARGAR Y UNIR DATOS MANUALMENTE ===
+// === CARGAR Y UNIR DATOS MANUALMENTE EN BLOQUES ===
 async function cargarRegistros() {
     // 1. Traer solo los registros_catastro
     const { data: registros, error: errorRegistros } = await clienteSupabase
@@ -32,38 +32,42 @@ async function cargarRegistros() {
         return;
     }
 
-    // 2. Extraer todos los números de suministro únicos de esos registros
-    const suministrosUnicos = [...new Set(registros.map(r => r.suministro))].filter(s => s != null);
+    // 2. Extraer los números de suministro únicos y convertirlos a texto
+    const suministrosUnicos = [...new Set(registros.map(r => String(r.suministro)))].filter(s => s && s !== 'null');
 
     let suministrosData = [];
 
-    // 3. Traer la información de la tabla 'suministros' SOLO para esos números
+    // 3. Traer la información en bloques (Chunks) para evitar el error de límite de URL de Supabase
     if (suministrosUnicos.length > 0) {
-        const { data: suministros, error: errorSuministros } = await clienteSupabase
-            .from('suministros')
-            .select('suministro, medidor_actual, distrito, direccion, anio_fabricacion, numero_medidor, marca')
-            .in('suministro', suministrosUnicos); // Filtra para no descargar toda la base de datos
+        const tamanoBloque = 150; 
+        
+        for (let i = 0; i < suministrosUnicos.length; i += tamanoBloque) {
+            const bloque = suministrosUnicos.slice(i, i + tamanoBloque);
+            
+            const { data: suministros, error: errorSuministros } = await clienteSupabase
+                .from('suministros')
+                .select('suministro, medidor_actual, distrito, direccion, anio_fabricacion, numero_medidor, marca')
+                .in('suministro', bloque);
 
-        if (errorSuministros) {
-            console.error("Error al cargar tabla suministros:", errorSuministros);
-        } else {
-            suministrosData = suministros;
+            if (errorSuministros) {
+                console.error(`Error al cargar bloque ${i}:`, errorSuministros);
+            } else if (suministros) {
+                suministrosData = suministrosData.concat(suministros);
+            }
         }
     }
 
-    // 4. Unir ambas tablas (Hacer el Match manualmente)
+    // 4. Unir ambas tablas haciendo match estricto como String
     registrosGlobales = registros.map(reg => {
-        // Buscamos si existe el suministro en la segunda tabla
-        const infoSuministro = suministrosData.find(s => s.suministro == reg.suministro);
+        const sumStr = String(reg.suministro);
+        const infoSuministro = suministrosData.find(s => String(s.suministro) === sumStr);
         
-        // Retornamos el registro combinando la info (si no hay, agregamos un objeto vacío)
         return {
             ...reg,
             suministros: infoSuministro || {} 
         };
     });
 
-    // 5. Renderizar la tabla con los datos ya cruzados
     renderizarTabla(registrosGlobales);
 }
 
@@ -114,7 +118,7 @@ document.getElementById('btnFiltrar').addEventListener('click', () => {
     const impFiltro = document.getElementById('filtroImpedimento').value;
 
     let filtrados = registrosGlobales.filter(reg => {
-        let cumpleSum = sumFiltro === '' || reg.suministro.toString().includes(sumFiltro);
+        let cumpleSum = sumFiltro === '' || String(reg.suministro).includes(sumFiltro);
         let cumpleImp = impFiltro === '' || reg.impedimento_cod === impFiltro;
         return cumpleSum && cumpleImp;
     });
@@ -138,7 +142,7 @@ document.getElementById('btnExportar').addEventListener('click', () => {
         const datosSum = reg.suministros || {};
 
         const distrito = datosSum.distrito || '';
-        const direccion = datosSum.direccion ? datosSum.direccion.replace(/,/g, ' ') : ''; 
+        const direccion = datosSum.direccion ? datosSum.direccion.replace(/,/g, ' ').replace(/\n/g, ' ') : ''; 
         const anio_fabricacion = datosSum.anio_fabricacion || '';
         const numero_medidor = datosSum.numero_medidor || '';
         const marca = datosSum.marca || '';
@@ -178,7 +182,7 @@ document.getElementById('btnExportarFotos').addEventListener('click', async () =
 
         registrosGlobales.forEach(reg => {
             if (reg.fotos_urls && reg.fotos_urls.length > 0) {
-                const carpetaSuministro = zip.folder(reg.suministro.toString());
+                const carpetaSuministro = zip.folder(String(reg.suministro));
 
                 reg.fotos_urls.forEach((url, index) => {
                     const promesa = fetch(url)
@@ -203,48 +207,4 @@ document.getElementById('btnExportarFotos').addEventListener('click', async () =
         const contenidoZip = await zip.generateAsync({ type: "blob" });
         
         const link = document.createElement("a");
-        link.href = URL.createObjectURL(contenidoZip);
-        link.download = `Fotos_Suministros_${new Date().toISOString().split('T')[0]}.zip`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(link.href);
-
-    } catch (error) {
-        console.error("Error general generando el ZIP: ", error);
-        alert('Ocurrió un error al intentar generar el archivo ZIP.');
-    } finally {
-        btn.innerHTML = textoOriginal;
-        btn.disabled = false;
-        btn.style.opacity = '1';
-    }
-});
-
-// === MODAL DE FOTOS ===
-const modal = document.getElementById("fotoModal");
-const spanClose = document.getElementsByClassName("close")[0];
-const galeriaGrid = document.getElementById("galeriaFotos");
-
-function abrirModal(index) {
-    galeriaGrid.innerHTML = '';
-    const fotos = registrosGlobales[index].fotos_urls;
-    
-    fotos.forEach(url => {
-        galeriaGrid.innerHTML += `<a href="${url}" target="_blank"><img src="${url}" alt="Evidencia"></a>`;
-    });
-    
-    modal.style.display = "block";
-}
-
-spanClose.onclick = function() {
-    modal.style.display = "none";
-}
-
-window.onclick = function(event) {
-    if (event.target == modal) {
-        modal.style.display = "none";
-    }
-}
-
-// Inicializar
-cargarRegistros();
+        link.href = URL
