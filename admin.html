@@ -6,6 +6,8 @@
     <title>Dashboard Catastro - Calidad de la Medida</title>
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Librería JSZip para crear el archivo .zip -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
 <body class="admin-body">
     <div class="dashboard-container">
@@ -13,6 +15,7 @@
             <h2>Supervisión de Catastro de Medidores</h2>
             <div style="display: flex; gap: 10px;">
                 <button id="btnExportar" class="btn-exportar">📥 Exportar a CSV</button>
+                <button id="btnExportarFotos" class="btn-exportar" style="background: #17a2b8;">📸 Exportar Fotos</button>
                 <button onclick="cerrarSesion()" style="background: #dc3545; width: auto; margin: 0; padding: 10px 20px;">Cerrar Sesión</button>
             </div>
         </div>
