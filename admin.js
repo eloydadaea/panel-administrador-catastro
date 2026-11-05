@@ -31,12 +31,10 @@ async function cargarRegistros() {
         return;
     }
 
-    // Obtenemos los suministros únicos asegurándonos de que no haya nulos
     const suministrosUnicos = [...new Set(registros.map(r => r.suministro))].filter(Boolean);
-
     let suministrosData = [];
 
-    // Pedimos la data a Supabase en bloques de 100 para no saturar la petición (Límite de URL)
+    // Pedimos la data a Supabase en bloques de 100 para no saturar la petición
     if (suministrosUnicos.length > 0) {
         for (let i = 0; i < suministrosUnicos.length; i += 100) {
             const bloque = suministrosUnicos.slice(i, i + 100);
@@ -54,7 +52,7 @@ async function cargarRegistros() {
         }
     }
 
-    // Cruzamos la información (el "==" doble permite unir números con texto sin fallar)
+    // Cruzamos la información
     registrosGlobales = registros.map(reg => {
         const infoSuministro = suministrosData.find(s => s.suministro == reg.suministro);
         return {
@@ -120,6 +118,14 @@ document.getElementById('btnFiltrar').addEventListener('click', () => {
     renderizarTabla(filtrados);
 });
 
+// === FUNCIÓN PARA ESCAPAR COMAS Y EVITAR DESPLAZAMIENTO EN CSV ===
+function escaparCSV(valor) {
+    if (valor === null || valor === undefined) return '""';
+    // Reemplaza saltos de línea por espacios y envuelve todo en comillas dobles
+    let stringLimpiado = String(valor).replace(/\n/g, ' ').replace(/"/g, '""');
+    return `"${stringLimpiado}"`;
+}
+
 // === EXPORTAR A CSV (EXCEL) ===
 document.getElementById('btnExportar').addEventListener('click', () => {
     if(registrosGlobales.length === 0) return alert('No hay datos para exportar');
@@ -129,14 +135,12 @@ document.getElementById('btnExportar').addEventListener('click', () => {
     csvContent += "Creado En,Técnico,Suministro,Distrito,Direccion,Año Fabricación,Nro Medidor,Marca,Medidor Actual,Tipo Caja,Tipo Chapa,Fase,Acometida,ITM,Impedimento,Submotivo\n";
 
     registrosGlobales.forEach(reg => {
-        const creado_en = reg.creado_en ? new Date(reg.creado_en).toLocaleString('es-PE').replace(',', '') : '';
+        const creado_en = reg.creado_en ? new Date(reg.creado_en).toLocaleString('es-PE') : '';
         const tecnico = reg.tecnico || '';
         const datosSum = reg.suministros || {};
 
         const distrito = datosSum.distrito || '';
-        const dirRaw = datosSum.direccion || '';
-        // Limpiamos comas y saltos de línea para que las celdas de Excel no se desplacen
-        const direccion = dirRaw.replace(/,/g, ' ').replace(/\n/g, ' '); 
+        const direccion = datosSum.direccion || '';
         const anio_fabricacion = datosSum.anio_fabricacion || '';
         const numero_medidor = datosSum.numero_medidor || '';
         const marca = datosSum.marca || '';
@@ -145,7 +149,25 @@ document.getElementById('btnExportar').addEventListener('click', () => {
         const itm = reg.itm_portafusible || '';
         const sub = reg.submotivo_cod || '';
         
-        let row = `${creado_en},${tecnico},${reg.suministro},${distrito},${direccion},${anio_fabricacion},${numero_medidor},${marca},${med_actual},${reg.tipo_caja},${reg.tipo_chapa},${reg.fase},${reg.tipo_acometida},${itm},${reg.impedimento_cod},${sub}`;
+        // Formamos la fila aplicando "escaparCSV" a cada dato para que las comas no rompan la tabla
+        let row = [
+            escaparCSV(creado_en),
+            escaparCSV(tecnico),
+            escaparCSV(reg.suministro),
+            escaparCSV(distrito),
+            escaparCSV(direccion),
+            escaparCSV(anio_fabricacion),
+            escaparCSV(numero_medidor),
+            escaparCSV(marca),
+            escaparCSV(med_actual),
+            escaparCSV(reg.tipo_caja),
+            escaparCSV(reg.tipo_chapa),
+            escaparCSV(reg.fase),
+            escaparCSV(reg.tipo_acometida),
+            escaparCSV(itm),
+            escaparCSV(reg.impedimento_cod),
+            escaparCSV(sub)
+        ].join(','); // Unimos los datos con coma
         
         csvContent += row + "\n";
     });
