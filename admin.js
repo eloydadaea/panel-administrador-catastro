@@ -207,4 +207,48 @@ document.getElementById('btnExportarFotos').addEventListener('click', async () =
         const contenidoZip = await zip.generateAsync({ type: "blob" });
         
         const link = document.createElement("a");
-        link.href = URL
+        link.href = URL.createObjectURL(contenidoZip);
+        link.download = `Fotos_Suministros_${new Date().toISOString().split('T')[0]}.zip`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
+
+    } catch (error) {
+        console.error("Error general generando el ZIP: ", error);
+        alert('Ocurrió un error al intentar generar el archivo ZIP.');
+    } finally {
+        btn.innerHTML = textoOriginal;
+        btn.disabled = false;
+        btn.style.opacity = '1';
+    }
+});
+
+// === MODAL DE FOTOS ===
+const modal = document.getElementById("fotoModal");
+const spanClose = document.getElementsByClassName("close")[0];
+const galeriaGrid = document.getElementById("galeriaFotos");
+
+function abrirModal(index) {
+    galeriaGrid.innerHTML = '';
+    const fotos = registrosGlobales[index].fotos_urls;
+    
+    fotos.forEach(url => {
+        galeriaGrid.innerHTML += `<a href="${url}" target="_blank"><img src="${url}" alt="Evidencia"></a>`;
+    });
+    
+    modal.style.display = "block";
+}
+
+spanClose.onclick = function() {
+    modal.style.display = "none";
+}
+
+window.onclick = function(event) {
+    if (event.target == modal) {
+        modal.style.display = "none";
+    }
+}
+
+// Inicializar
+cargarRegistros();
