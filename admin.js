@@ -120,6 +120,76 @@ document.getElementById('btnExportar').addEventListener('click', () => {
     document.body.removeChild(link);
 });
 
+// === EXPORTAR FOTOS A ZIP ===
+document.getElementById('btnExportarFotos').addEventListener('click', async () => {
+    if (registrosGlobales.length === 0) return alert('No hay datos para exportar');
+
+    const btn = document.getElementById('btnExportarFotos');
+    const textoOriginal = btn.innerHTML;
+    
+    // Cambiar estado del botón para indicar que está procesando
+    btn.innerHTML = '⏳ Generando ZIP (Puede demorar)...';
+    btn.disabled = true;
+    btn.style.opacity = '0.7';
+
+    try {
+        const zip = new JSZip();
+        const promesasFetch = [];
+
+        // Recorrer todos los registros globales
+        registrosGlobales.forEach(reg => {
+            if (reg.fotos_urls && reg.fotos_urls.length > 0) {
+                // Crear una carpeta con el número del suministro
+                const carpetaSuministro = zip.folder(reg.suministro.toString());
+
+                // Iterar sobre las URLs de las fotos de este registro
+                reg.fotos_urls.forEach((url, index) => {
+                    const promesa = fetch(url)
+                        .then(response => {
+                            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                            return response.blob();
+                        })
+                        .then(blob => {
+                            // Extraer extensión de la URL (usualmente .jpg o .png)
+                            const extension = url.split('.').pop().split('?')[0] || 'jpg';
+                            const nombreArchivo = `foto_${index + 1}.${extension}`;
+                            
+                            // Guardar el blob de la imagen en la carpeta correspondiente
+                            carpetaSuministro.file(nombreArchivo, blob);
+                        })
+                        .catch(err => console.error(`Error al descargar imagen del suministro ${reg.suministro}:`, err));
+
+                    promesasFetch.push(promesa);
+                });
+            }
+        });
+
+        // Esperar a que TODAS las imágenes se hayan descargado
+        await Promise.all(promesasFetch);
+
+        // Generar el archivo ZIP
+        const contenidoZip = await zip.generateAsync({ type: "blob" });
+        
+        // Forzar la descarga en el navegador
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(contenidoZip);
+        link.download = `Fotos_Suministros_${new Date().toISOString().split('T')[0]}.zip`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
+
+    } catch (error) {
+        console.error("Error general generando el ZIP: ", error);
+        alert('Ocurrió un error al intentar generar el archivo ZIP.');
+    } finally {
+        // Restaurar el botón
+        btn.innerHTML = textoOriginal;
+        btn.disabled = false;
+        btn.style.opacity = '1';
+    }
+});
+
 // === MODAL DE FOTOS ===
 const modal = document.getElementById("fotoModal");
 const spanClose = document.getElementsByClassName("close")[0];
