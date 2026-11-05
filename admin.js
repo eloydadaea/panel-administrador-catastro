@@ -95,19 +95,24 @@ document.getElementById('btnExportar').addEventListener('click', () => {
     
     let csvContent = "data:text/csv;charset=utf-8,";
     
-    // CORRECCIÓN: Nuevas cabeceras para el Excel
-    csvContent += "Fecha,Suministro,Medidor Actual,Distrito,Direccion,Tipo Caja,Tipo Chapa,Fase,Acometida,ITM,Impedimento,Submotivo\n";
+    // Agregamos 'Creado En' y 'Técnico' a las cabeceras del archivo
+    csvContent += "Creado En,Técnico,Suministro,Medidor Actual,Distrito,Direccion,Tipo Caja,Tipo Chapa,Fase,Acometida,ITM,Impedimento,Submotivo\n";
 
     registrosGlobales.forEach(reg => {
-        const fecha = new Date(reg.creado_en).toLocaleString('es-PE').replace(',', '');
+        // Formateamos la fecha a partir del campo creado_en
+        const creado_en = reg.creado_en ? new Date(reg.creado_en).toLocaleString('es-PE').replace(',', '') : '';
+        // Obtenemos el nombre del técnico (si es null, lo dejamos vacío)
+        const tecnico = reg.tecnico || '';
+        
         const med = reg.suministros?.medidor_actual || '';
         const distrito = reg.suministros?.distrito || '';
-        const direccion = reg.suministros?.direccion ? reg.suministros.direccion.replace(/,/g, ' ') : ''; // Quitamos comas para no romper el CSV
+        const direccion = reg.suministros?.direccion ? reg.suministros.direccion.replace(/,/g, ' ') : ''; 
         
         const itm = reg.itm_portafusible || '';
         const sub = reg.submotivo_cod || '';
         
-        let row = `${fecha},${reg.suministro},${med},${distrito},${direccion},${reg.tipo_caja},${reg.tipo_chapa},${reg.fase},${reg.tipo_acometida},${itm},${reg.impedimento_cod},${sub}`;
+        // Incluimos creado_en y tecnico al principio de cada fila
+        let row = `${creado_en},${tecnico},${reg.suministro},${med},${distrito},${direccion},${reg.tipo_caja},${reg.tipo_chapa},${reg.fase},${reg.tipo_acometida},${itm},${reg.impedimento_cod},${sub}`;
         csvContent += row + "\n";
     });
 
