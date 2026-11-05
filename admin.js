@@ -20,10 +20,10 @@ async function cerrarSesion() {
 let registrosGlobales = [];
 
 async function cargarRegistros() {
-    // CORRECCIÓN: Se solicitan las nuevas columnas de la tabla suministros
+    // CORRECCIÓN: Agregamos anio_fabricacion, numero_medidor y marca a la consulta
     const { data, error } = await clienteSupabase
         .from('registros_catastro')
-        .select('*, suministros(medidor_actual, distrito, direccion)')
+        .select('*, suministros(medidor_actual, distrito, direccion, anio_fabricacion, numero_medidor, marca)')
         .order('creado_en', { ascending: false });
 
     if (error) {
@@ -34,7 +34,6 @@ async function cargarRegistros() {
     registrosGlobales = data;
     renderizarTabla(registrosGlobales);
 }
-
 function renderizarTabla(datos) {
     const tbody = document.querySelector('#tablaRegistros tbody');
     tbody.innerHTML = '';
@@ -95,24 +94,28 @@ document.getElementById('btnExportar').addEventListener('click', () => {
     
     let csvContent = "data:text/csv;charset=utf-8,";
     
-    // Agregamos 'Creado En' y 'Técnico' a las cabeceras del archivo
-    csvContent += "Creado En,Técnico,Suministro,Medidor Actual,Distrito,Direccion,Tipo Caja,Tipo Chapa,Fase,Acometida,ITM,Impedimento,Submotivo\n";
+    // 1. Agregamos las nuevas cabeceras correspondientes a la tabla suministros
+    csvContent += "Creado En,Técnico,Suministro,Distrito,Direccion,Año Fabricación,Nro Medidor,Marca,Medidor Actual,Tipo Caja,Tipo Chapa,Fase,Acometida,ITM,Impedimento,Submotivo\n";
 
     registrosGlobales.forEach(reg => {
-        // Formateamos la fecha a partir del campo creado_en
         const creado_en = reg.creado_en ? new Date(reg.creado_en).toLocaleString('es-PE').replace(',', '') : '';
-        // Obtenemos el nombre del técnico (si es null, lo dejamos vacío)
         const tecnico = reg.tecnico || '';
         
-        const med = reg.suministros?.medidor_actual || '';
+        // 2. Extraemos los datos de la tabla relacionada 'suministros'
         const distrito = reg.suministros?.distrito || '';
         const direccion = reg.suministros?.direccion ? reg.suministros.direccion.replace(/,/g, ' ') : ''; 
+        const anio_fabricacion = reg.suministros?.anio_fabricacion || '';
+        const numero_medidor = reg.suministros?.numero_medidor || '';
+        const marca = reg.suministros?.marca || '';
+        const med_actual = reg.suministros?.medidor_actual || '';
         
+        // Datos propios de la tabla 'registros_catastro'
         const itm = reg.itm_portafusible || '';
         const sub = reg.submotivo_cod || '';
         
-        // Incluimos creado_en y tecnico al principio de cada fila
-        let row = `${creado_en},${tecnico},${reg.suministro},${med},${distrito},${direccion},${reg.tipo_caja},${reg.tipo_chapa},${reg.fase},${reg.tipo_acometida},${itm},${reg.impedimento_cod},${sub}`;
+        // 3. Armamos la fila respetando el orden de las cabeceras
+        let row = `${creado_en},${tecnico},${reg.suministro},${distrito},${direccion},${anio_fabricacion},${numero_medidor},${marca},${med_actual},${reg.tipo_caja},${reg.tipo_chapa},${reg.fase},${reg.tipo_acometida},${itm},${reg.impedimento_cod},${sub}`;
+        
         csvContent += row + "\n";
     });
 
