@@ -19,7 +19,7 @@ async function cerrarSesion() {
 
 let registrosGlobales = [];
 
-// === CARGAR Y UNIR DATOS MANUALMENTE ===
+// === CARGAR Y UNIR DATOS MANUALMENTE EN BLOQUES ===
 async function cargarRegistros() {
     const { data: registros, error: errorRegistros } = await clienteSupabase
         .from('registros_catastro')
@@ -36,7 +36,7 @@ async function cargarRegistros() {
 
     let suministrosData = [];
 
-    // Pedimos la data a Supabase en bloques para no saturar la petición
+    // Pedimos la data a Supabase en bloques de 100 para no saturar la petición (Límite de URL)
     if (suministrosUnicos.length > 0) {
         for (let i = 0; i < suministrosUnicos.length; i += 100) {
             const bloque = suministrosUnicos.slice(i, i + 100);
@@ -124,6 +124,7 @@ document.getElementById('btnFiltrar').addEventListener('click', () => {
 document.getElementById('btnExportar').addEventListener('click', () => {
     if(registrosGlobales.length === 0) return alert('No hay datos para exportar');
     
+    // BOM para que Excel lea correctamente los acentos y la letra ñ
     let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
     csvContent += "Creado En,Técnico,Suministro,Distrito,Direccion,Año Fabricación,Nro Medidor,Marca,Medidor Actual,Tipo Caja,Tipo Chapa,Fase,Acometida,ITM,Impedimento,Submotivo\n";
 
@@ -134,6 +135,7 @@ document.getElementById('btnExportar').addEventListener('click', () => {
 
         const distrito = datosSum.distrito || '';
         const dirRaw = datosSum.direccion || '';
+        // Limpiamos comas y saltos de línea para que las celdas de Excel no se desplacen
         const direccion = dirRaw.replace(/,/g, ' ').replace(/\n/g, ' '); 
         const anio_fabricacion = datosSum.anio_fabricacion || '';
         const numero_medidor = datosSum.numero_medidor || '';
