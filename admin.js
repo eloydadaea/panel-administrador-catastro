@@ -18,6 +18,9 @@ async function cerrarSesion() {
 }
 
 let registrosGlobales = [];
+let datosFiltrados = [];          // Resultado vigente (con o sin filtros)
+let paginaActual = 1;
+const REGISTROS_POR_PAGINA = 10;
 
 // === CARGAR Y UNIR DATOS MANUALMENTE EN BLOQUES ===
 async function cargarRegistros() {
@@ -64,16 +67,29 @@ async function cargarRegistros() {
     renderizarTabla(registrosGlobales);
 }
 
-function renderizarTabla(datos) {
+// === RENDER DE TABLA (CON PAGINACIÓN) ===
+function renderizarTabla(datos, reiniciarPagina = true) {
+    datosFiltrados = datos;
+    if (reiniciarPagina) paginaActual = 1;
+
+    const totalPaginas = Math.max(1, Math.ceil(datosFiltrados.length / REGISTROS_POR_PAGINA));
+    if (paginaActual > totalPaginas) paginaActual = totalPaginas;
+
     const tbody = document.querySelector('#tablaRegistros tbody');
     tbody.innerHTML = '';
 
-    if(datos.length === 0) {
+    if (datosFiltrados.length === 0) {
         tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">No se encontraron registros.</td></tr>';
+        renderizarPaginador();
         return;
     }
 
-    datos.forEach((reg, index) => {
+    const inicio = (paginaActual - 1) * REGISTROS_POR_PAGINA;
+    const pagina = datosFiltrados.slice(inicio, inicio + REGISTROS_POR_PAGINA);
+
+    let html = '';
+    pagina.forEach((reg, i) => {
+        const index = inicio + i; // índice dentro de datosFiltrados
         const fecha = new Date(reg.creado_en).toLocaleString('es-PE');
         const datosSum = reg.suministros || {};
 
@@ -86,10 +102,13 @@ function renderizarTabla(datos) {
         
         const tieneFotos = reg.fotos_urls && reg.fotos_urls.length > 0;
         const btnFotos = tieneFotos 
-            ? `<button class="btn-fotos" onclick="abrirModal(${index})">Ver ${reg.fotos_urls.length} Fotos</button>` 
+            ? `<div class="evidencia-acciones">
+                   <button class="btn-fotos" onclick="abrirModal(${index})">Ver ${reg.fotos_urls.length} Fotos</button>
+                   <button class="btn-descargar-fotos" title="Descargar fotos del suministro ${reg.suministro}" onclick="descargarFotosSuministro(${index}, this)">⬇ Descargar</button>
+               </div>`
             : '<span style="color:#999; font-size:0.8rem;">Sin fotos</span>';
 
-        tbody.innerHTML += `
+        html += `
             <tr>
                 <td>${fecha}</td>
                 <td><strong>${reg.suministro}</strong></td>
@@ -102,6 +121,68 @@ function renderizarTabla(datos) {
             </tr>
         `;
     });
+    tbody.innerHTML = html;
+
+    renderizarPaginador();
+}
+
+// === PAGINADOR ===
+function obtenerContenedorPaginador() {
+    let cont = document.getElementById('paginador');
+    if (!cont) {
+        cont = document.createElement('div');
+        cont.id = 'paginador';
+        cont.className = 'paginador';
+        const tabla = document.getElementById('tablaRegistros');
+        const wrapper = tabla.closest('.table-responsive') || tabla;
+        wrapper.insertAdjacentElement('afterend', cont);
+    }
+    return cont;
+}
+
+function renderizarPaginador() {
+    const cont = obtenerContenedorPaginador();
+    const total = datosFiltrados.length;
+
+    if (total === 0) {
+        cont.innerHTML = '';
+        return;
+    }
+
+    const totalPaginas = Math.ceil(total / REGISTROS_POR_PAGINA);
+    const desde = (paginaActual - 1) * REGISTROS_POR_PAGINA + 1;
+    const hasta = Math.min(paginaActual * REGISTROS_POR_PAGINA, total);
+
+    // Ventana de hasta 5 números de página alrededor de la actual
+    let ini = Math.max(1, paginaActual - 2);
+    let fin = Math.min(totalPaginas, ini + 4);
+    ini = Math.max(1, fin - 4);
+
+    let botones = `<button class="pag-btn" ${paginaActual === 1 ? 'disabled' : ''} onclick="irAPagina(${paginaActual - 1})">‹ Anterior</button>`;
+    if (ini > 1) {
+        botones += `<button class="pag-btn" onclick="irAPagina(1)">1</button>`;
+        if (ini > 2) botones += `<span class="pag-puntos">…</span>`;
+    }
+    for (let p = ini; p <= fin; p++) {
+        botones += `<button class="pag-btn ${p === paginaActual ? 'activo' : ''}" onclick="irAPagina(${p})">${p}</button>`;
+    }
+    if (fin < totalPaginas) {
+        if (fin < totalPaginas - 1) botones += `<span class="pag-puntos">…</span>`;
+        botones += `<button class="pag-btn" onclick="irAPagina(${totalPaginas})">${totalPaginas}</button>`;
+    }
+    botones += `<button class="pag-btn" ${paginaActual === totalPaginas ? 'disabled' : ''} onclick="irAPagina(${paginaActual + 1})">Siguiente ›</button>`;
+
+    cont.innerHTML = `
+        <span class="pag-info">Mostrando ${desde}–${hasta} de ${total} registros</span>
+        <div class="pag-controles">${botones}</div>
+    `;
+}
+
+function irAPagina(n) {
+    const totalPaginas = Math.max(1, Math.ceil(datosFiltrados.length / REGISTROS_POR_PAGINA));
+    if (n < 1 || n > totalPaginas) return;
+    paginaActual = n;
+    renderizarTabla(datosFiltrados, false);
 }
 
 // === LÓGICA DE FILTROS ===
@@ -115,8 +196,61 @@ document.getElementById('btnFiltrar').addEventListener('click', () => {
         return cumpleSum && cumpleImp;
     });
 
-    renderizarTabla(filtrados);
+    renderizarTabla(filtrados); // vuelve a la página 1
 });
+
+// === DESCARGAR FOTOS DE UN SOLO SUMINISTRO (ZIP) ===
+async function descargarFotosSuministro(index, boton) {
+    const reg = datosFiltrados[index];
+    if (!reg || !reg.fotos_urls || reg.fotos_urls.length === 0) {
+        return alert('Este registro no tiene fotos.');
+    }
+
+    const textoOriginal = boton.innerHTML;
+    boton.innerHTML = '⏳ Generando...';
+    boton.disabled = true;
+
+    try {
+        const zip = new JSZip();
+        const carpeta = zip.folder(String(reg.suministro));
+
+        const resultados = await Promise.all(reg.fotos_urls.map(async (url, i) => {
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const blob = await response.blob();
+                const extension = url.split('.').pop().split('?')[0] || 'jpg';
+                carpeta.file(`foto_${i + 1}.${extension}`, blob);
+                return true;
+            } catch (err) {
+                console.error(`Error foto ${i + 1} del suministro ${reg.suministro}:`, err);
+                return false;
+            }
+        }));
+
+        if (!resultados.some(Boolean)) {
+            throw new Error('No se pudo descargar ninguna foto.');
+        }
+
+        const contenidoZip = await zip.generateAsync({ type: 'blob' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(contenidoZip);
+        link.download = `Fotos_${reg.suministro}.zip`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
+
+        const fallidas = resultados.filter(r => !r).length;
+        if (fallidas > 0) alert(`Se omitieron ${fallidas} foto(s) que no se pudieron descargar.`);
+    } catch (error) {
+        console.error('Error generando ZIP del suministro:', error);
+        alert('Ocurrió un error al generar el archivo ZIP.');
+    } finally {
+        boton.innerHTML = textoOriginal;
+        boton.disabled = false;
+    }
+}
 
 // === FUNCIÓN PARA ESCAPAR COMAS Y EVITAR DESPLAZAMIENTO EN CSV ===
 function escaparCSV(valor) {
@@ -181,7 +315,7 @@ document.getElementById('btnExportar').addEventListener('click', () => {
     document.body.removeChild(link);
 });
 
-// === EXPORTAR FOTOS A ZIP ===
+// === EXPORTAR FOTOS A ZIP (TODOS LOS REGISTROS) ===
 document.getElementById('btnExportarFotos').addEventListener('click', async () => {
     if (registrosGlobales.length === 0) return alert('No hay datos para exportar');
 
@@ -246,7 +380,7 @@ const galeriaGrid = document.getElementById("galeriaFotos");
 
 function abrirModal(index) {
     galeriaGrid.innerHTML = '';
-    const fotos = registrosGlobales[index].fotos_urls;
+    const fotos = datosFiltrados[index].fotos_urls;
     
     fotos.forEach(url => {
         galeriaGrid.innerHTML += `<a href="${url}" target="_blank"><img src="${url}" alt="Evidencia"></a>`;
