@@ -22,47 +22,108 @@ let datosFiltrados = [];          // Resultado vigente (con o sin filtros)
 let paginaActual = 1;
 const REGISTROS_POR_PAGINA = 10;
 
-// === CARGAR Y UNIR DATOS MANUALMENTE EN BLOQUES ===
-async function cargarRegistros() {
-    const { data: registros, error: errorRegistros } = await clienteSupabase
-        .from('registros_catastro')
-        .select('*')
-        .order('creado_en', { ascending: false });
+// === UTILIDADES ===
 
-    if (errorRegistros) {
-        console.error("Error al cargar registros:", errorRegistros);
+// Fecha en hora de Lima (UTC-5). Si la BD entrega la fecha sin zona horaria, se asume UTC.
+function formatearFechaLima(valor) {
+    if (!valor) return '';
+    let texto = String(valor).trim().replace(' ', 'T');
+    if (!/(Z|[+-]\d{2}(:?\d{2})?)$/.test(texto)) texto += 'Z';
+    const fecha = new Date(texto);
+    if (isNaN(fecha)) return String(valor);
+    return fecha.toLocaleString('es-PE', { timeZone: 'America/Lima' });
+}
+
+// Evita que texto de la BD se interprete como HTML
+function escaparHTML(valor) {
+    if (valor === null || valor === undefined) return '';
+    return String(valor)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+// Escapa comillas y saltos de línea para CSV
+function escaparCSV(valor) {
+    if (valor === null || valor === undefined) return '""';
+    const limpio = String(valor).replace(/\r?\n/g, ' ').replace(/"/g, '""');
+    return `"${limpio}"`;
+}
+
+// Descarga un Blob como archivo
+function descargarBlob(blob, nombreArchivo) {
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = nombreArchivo;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+
+// Extensión segura de una URL de foto
+function extensionDeUrl(url) {
+    const ext = url.split('?')[0].split('.').pop();
+    return (ext && ext.length <= 5) ? ext : 'jpg';
+}
+
+// === CARGAR TODOS LOS REGISTROS (Supabase devuelve máx. 1000 por consulta) ===
+async function obtenerTodosLosRegistros() {
+    const paso = 1000;
+    let desde = 0;
+    const todos = [];
+
+    while (true) {
+        const { data, error } = await clienteSupabase
+            .from('registros_catastro')
+            .select('*')
+            .order('creado_en', { ascending: false })
+            .range(desde, desde + paso - 1);
+
+        if (error) throw error;
+        todos.push(...data);
+        if (data.length < paso) break;
+        desde += paso;
+    }
+    return todos;
+}
+
+// === CARGAR Y UNIR DATOS ===
+async function cargarRegistros() {
+    let registros;
+    try {
+        registros = await obtenerTodosLosRegistros();
+    } catch (errorRegistros) {
+        console.error('Error al cargar registros:', errorRegistros);
         return;
     }
 
     const suministrosUnicos = [...new Set(registros.map(r => r.suministro))].filter(Boolean);
-    let suministrosData = [];
+    const mapaSuministros = new Map();
 
     // Pedimos la data a Supabase en bloques de 100 para no saturar la petición
-    if (suministrosUnicos.length > 0) {
-        for (let i = 0; i < suministrosUnicos.length; i += 100) {
-            const bloque = suministrosUnicos.slice(i, i + 100);
-            
-            const { data: bloqueDatos, error: errorSuministros } = await clienteSupabase
-                .from('suministros')
-                .select('suministro, medidor_actual, distrito, direccion, anio_fabricacion, numero_medidor, marca')
-                .in('suministro', bloque);
+    for (let i = 0; i < suministrosUnicos.length; i += 100) {
+        const bloque = suministrosUnicos.slice(i, i + 100);
 
-            if (errorSuministros) {
-                console.error(`Error cargando bloque de suministros:`, errorSuministros);
-            } else if (bloqueDatos) {
-                suministrosData.push(...bloqueDatos);
-            }
+        const { data: bloqueDatos, error: errorSuministros } = await clienteSupabase
+            .from('suministros')
+            .select('suministro, medidor_actual, distrito, direccion, anio_fabricacion, numero_medidor, marca')
+            .in('suministro', bloque);
+
+        if (errorSuministros) {
+            console.error('Error cargando bloque de suministros:', errorSuministros);
+        } else if (bloqueDatos) {
+            bloqueDatos.forEach(s => mapaSuministros.set(String(s.suministro), s));
         }
     }
 
     // Cruzamos la información
-    registrosGlobales = registros.map(reg => {
-        const infoSuministro = suministrosData.find(s => s.suministro == reg.suministro);
-        return {
-            ...reg,
-            suministros: infoSuministro || {} 
-        };
-    });
+    registrosGlobales = registros.map(reg => ({
+        ...reg,
+        suministros: mapaSuministros.get(String(reg.suministro)) || {}
+    }));
 
     renderizarTabla(registrosGlobales);
 }
@@ -90,33 +151,33 @@ function renderizarTabla(datos, reiniciarPagina = true) {
     let html = '';
     pagina.forEach((reg, i) => {
         const index = inicio + i; // índice dentro de datosFiltrados
-        const fecha = new Date(reg.creado_en).toLocaleString('es-PE');
+        const fecha = formatearFechaLima(reg.creado_en);
         const datosSum = reg.suministros || {};
 
         const medidorInfo = datosSum.distrito 
-            ? `${datosSum.medidor_actual || 'S/D'} <br><small>${datosSum.distrito || 'S/D'}</small>` 
+            ? `${escaparHTML(datosSum.medidor_actual || 'S/D')} <br><small>${escaparHTML(datosSum.distrito || 'S/D')}</small>` 
             : 'N/A';
             
-        const submotivo = reg.submotivo_cod ? ` - ${reg.submotivo_cod}` : '';
-        const itm = reg.itm_portafusible || 'N/A';
+        const submotivo = reg.submotivo_cod ? ` - ${escaparHTML(reg.submotivo_cod)}` : '';
+        const itm = escaparHTML(reg.itm_portafusible || 'N/A');
         
         const tieneFotos = reg.fotos_urls && reg.fotos_urls.length > 0;
         const btnFotos = tieneFotos 
             ? `<div class="evidencia-acciones">
                    <button class="btn-fotos" onclick="abrirModal(${index})">Ver ${reg.fotos_urls.length} Fotos</button>
-                   <button class="btn-descargar-fotos" title="Descargar fotos del suministro ${reg.suministro}" onclick="descargarFotosSuministro(${index}, this)">⬇ Descargar</button>
+                   <button class="btn-descargar-fotos" title="Descargar fotos del suministro ${escaparHTML(reg.suministro)}" onclick="descargarFotosSuministro(${index}, this)">⬇ Descargar</button>
                </div>`
             : '<span style="color:#999; font-size:0.8rem;">Sin fotos</span>';
 
         html += `
             <tr>
-                <td>${fecha}</td>
-                <td><strong>${reg.suministro}</strong></td>
+                <td>${escaparHTML(fecha)}</td>
+                <td><strong>${escaparHTML(reg.suministro)}</strong></td>
                 <td>${medidorInfo}</td>
-                <td>${reg.tipo_caja} / ${reg.tipo_chapa}</td>
-                <td>${reg.fase} / ${reg.tipo_acometida}</td>
+                <td>${escaparHTML(reg.tipo_caja)} / ${escaparHTML(reg.tipo_chapa)}</td>
+                <td>${escaparHTML(reg.fase)} / ${escaparHTML(reg.tipo_acometida)}</td>
                 <td>${itm}</td>
-                <td><strong>${reg.impedimento_cod}</strong>${submotivo}</td>
+                <td><strong>${escaparHTML(reg.impedimento_cod)}</strong>${submotivo}</td>
                 <td>${btnFotos}</td>
             </tr>
         `;
@@ -190,9 +251,9 @@ document.getElementById('btnFiltrar').addEventListener('click', () => {
     const sumFiltro = document.getElementById('filtroSuministro').value;
     const impFiltro = document.getElementById('filtroImpedimento').value;
 
-    let filtrados = registrosGlobales.filter(reg => {
-        let cumpleSum = sumFiltro === '' || String(reg.suministro).includes(sumFiltro);
-        let cumpleImp = impFiltro === '' || reg.impedimento_cod === impFiltro;
+    const filtrados = registrosGlobales.filter(reg => {
+        const cumpleSum = sumFiltro === '' || String(reg.suministro).includes(sumFiltro);
+        const cumpleImp = impFiltro === '' || reg.impedimento_cod === impFiltro;
         return cumpleSum && cumpleImp;
     });
 
@@ -219,8 +280,7 @@ async function descargarFotosSuministro(index, boton) {
                 const response = await fetch(url);
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const blob = await response.blob();
-                const extension = url.split('.').pop().split('?')[0] || 'jpg';
-                carpeta.file(`foto_${i + 1}.${extension}`, blob);
+                carpeta.file(`foto_${i + 1}.${extensionDeUrl(url)}`, blob);
                 return true;
             } catch (err) {
                 console.error(`Error foto ${i + 1} del suministro ${reg.suministro}:`, err);
@@ -233,13 +293,7 @@ async function descargarFotosSuministro(index, boton) {
         }
 
         const contenidoZip = await zip.generateAsync({ type: 'blob' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(contenidoZip);
-        link.download = `Fotos_${reg.suministro}.zip`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(link.href);
+        descargarBlob(contenidoZip, `Fotos_${reg.suministro}.zip`);
 
         const fallidas = resultados.filter(r => !r).length;
         if (fallidas > 0) alert(`Se omitieron ${fallidas} foto(s) que no se pudieron descargar.`);
@@ -252,67 +306,43 @@ async function descargarFotosSuministro(index, boton) {
     }
 }
 
-// === FUNCIÓN PARA ESCAPAR COMAS Y EVITAR DESPLAZAMIENTO EN CSV ===
-function escaparCSV(valor) {
-    if (valor === null || valor === undefined) return '""';
-    // Reemplaza saltos de línea por espacios y envuelve todo en comillas dobles
-    let stringLimpiado = String(valor).replace(/\n/g, ' ').replace(/"/g, '""');
-    return `"${stringLimpiado}"`;
-}
-
 // === EXPORTAR A CSV (EXCEL) ===
 document.getElementById('btnExportar').addEventListener('click', () => {
-    if(registrosGlobales.length === 0) return alert('No hay datos para exportar');
-    
-    // BOM para que Excel lea correctamente los acentos y la letra ñ
-    let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
-    csvContent += "Creado En,Técnico,Suministro,Distrito,Direccion,Año Fabricación,Nro Medidor,Marca,Medidor Actual,Tipo Caja,Tipo Chapa,Fase,Acometida,ITM,Impedimento,Submotivo\n";
+    if (registrosGlobales.length === 0) return alert('No hay datos para exportar');
 
-    registrosGlobales.forEach(reg => {
-        const creado_en = reg.creado_en ? new Date(reg.creado_en).toLocaleString('es-PE') : '';
-        const tecnico = reg.tecnico || '';
+    const encabezados = [
+        'Creado En', 'Técnico', 'Suministro', 'Distrito', 'Direccion', 'Año Fabricación',
+        'Nro Medidor', 'Marca', 'Medidor Actual', 'Tipo Caja', 'Tipo Chapa', 'Fase',
+        'Acometida', 'ITM', 'Impedimento', 'Submotivo'
+    ];
+
+    const filas = registrosGlobales.map(reg => {
         const datosSum = reg.suministros || {};
-
-        const distrito = datosSum.distrito || '';
-        const direccion = datosSum.direccion || '';
-        const anio_fabricacion = datosSum.anio_fabricacion || '';
-        const numero_medidor = datosSum.numero_medidor || '';
-        const marca = datosSum.marca || '';
-        const med_actual = datosSum.medidor_actual || '';
-        
-        const itm = reg.itm_portafusible || '';
-        const sub = reg.submotivo_cod || '';
-        
-        // Formamos la fila aplicando "escaparCSV" a cada dato para que las comas no rompan la tabla
-        let row = [
-            escaparCSV(creado_en),
-            escaparCSV(tecnico),
-            escaparCSV(reg.suministro),
-            escaparCSV(distrito),
-            escaparCSV(direccion),
-            escaparCSV(anio_fabricacion),
-            escaparCSV(numero_medidor),
-            escaparCSV(marca),
-            escaparCSV(med_actual),
-            escaparCSV(reg.tipo_caja),
-            escaparCSV(reg.tipo_chapa),
-            escaparCSV(reg.fase),
-            escaparCSV(reg.tipo_acometida),
-            escaparCSV(itm),
-            escaparCSV(reg.impedimento_cod),
-            escaparCSV(sub)
-        ].join(','); // Unimos los datos con coma
-        
-        csvContent += row + "\n";
+        return [
+            formatearFechaLima(reg.creado_en),   // hora corregida a Lima
+            reg.tecnico || '',
+            reg.suministro,
+            datosSum.distrito || '',
+            datosSum.direccion || '',
+            datosSum.anio_fabricacion || '',
+            datosSum.numero_medidor || '',
+            datosSum.marca || '',
+            datosSum.medidor_actual || '',
+            reg.tipo_caja,
+            reg.tipo_chapa,
+            reg.fase,
+            reg.tipo_acometida,
+            reg.itm_portafusible || '',
+            reg.impedimento_cod,
+            reg.submotivo_cod || ''
+        ].map(escaparCSV).join(',');
     });
 
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `Catastro_Medidores_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // BOM (\uFEFF) para que Excel lea bien acentos y la ñ
+    const csv = '\uFEFF' + encabezados.join(',') + '\n' + filas.join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+
+    descargarBlob(blob, `Catastro_Medidores_${new Date().toISOString().split('T')[0]}.csv`);
 });
 
 // === EXPORTAR FOTOS A ZIP (TODOS LOS REGISTROS) ===
@@ -341,9 +371,7 @@ document.getElementById('btnExportarFotos').addEventListener('click', async () =
                             return response.blob();
                         })
                         .then(blob => {
-                            const extension = url.split('.').pop().split('?')[0] || 'jpg';
-                            const nombreArchivo = `foto_${index + 1}.${extension}`;
-                            carpetaSuministro.file(nombreArchivo, blob);
+                            carpetaSuministro.file(`foto_${index + 1}.${extensionDeUrl(url)}`, blob);
                         })
                         .catch(err => console.error(`Error foto suministro ${reg.suministro}:`, err));
 
@@ -354,17 +382,11 @@ document.getElementById('btnExportarFotos').addEventListener('click', async () =
 
         await Promise.all(promesasFetch);
 
-        const contenidoZip = await zip.generateAsync({ type: "blob" });
-        const link = document.createElement("a");
-        link.href = URL.createObjectURL(contenidoZip);
-        link.download = `Fotos_Suministros_${new Date().toISOString().split('T')[0]}.zip`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(link.href);
+        const contenidoZip = await zip.generateAsync({ type: 'blob' });
+        descargarBlob(contenidoZip, `Fotos_Suministros_${new Date().toISOString().split('T')[0]}.zip`);
 
     } catch (error) {
-        console.error("Error general generando el ZIP: ", error);
+        console.error('Error general generando el ZIP: ', error);
         alert('Ocurrió un error al intentar generar el archivo ZIP.');
     } finally {
         btn.innerHTML = textoOriginal;
@@ -374,30 +396,30 @@ document.getElementById('btnExportarFotos').addEventListener('click', async () =
 });
 
 // === MODAL DE FOTOS ===
-const modal = document.getElementById("fotoModal");
-const spanClose = document.getElementsByClassName("close")[0];
-const galeriaGrid = document.getElementById("galeriaFotos");
+const modal = document.getElementById('fotoModal');
+const spanClose = document.getElementsByClassName('close')[0];
+const galeriaGrid = document.getElementById('galeriaFotos');
 
 function abrirModal(index) {
     galeriaGrid.innerHTML = '';
-    const fotos = datosFiltrados[index].fotos_urls;
+    const fotos = datosFiltrados[index].fotos_urls || [];
     
-    fotos.forEach(url => {
-        galeriaGrid.innerHTML += `<a href="${url}" target="_blank"><img src="${url}" alt="Evidencia"></a>`;
-    });
+    galeriaGrid.innerHTML = fotos
+        .map(url => `<a href="${escaparHTML(url)}" target="_blank" rel="noopener"><img src="${escaparHTML(url)}" alt="Evidencia"></a>`)
+        .join('');
     
-    modal.style.display = "block";
+    modal.style.display = 'block';
 }
 
 spanClose.onclick = function() {
-    modal.style.display = "none";
-}
+    modal.style.display = 'none';
+};
 
 window.onclick = function(event) {
     if (event.target == modal) {
-        modal.style.display = "none";
+        modal.style.display = 'none';
     }
-}
+};
 
 // Inicializar
 cargarRegistros();
