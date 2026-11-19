@@ -22,6 +22,9 @@ let datosFiltrados = [];          // Resultado vigente (con o sin filtros)
 let paginaActual = 1;
 const REGISTROS_POR_PAGINA = 10;
 
+// Descargas simultáneas máximas al armar ZIP (evita ERR_INSUFFICIENT_RESOURCES)
+const CONCURRENCIA_FOTOS = 4;
+
 // === UTILIDADES ===
 
 // Fecha en hora de Lima (UTC-5). Si la BD entrega la fecha sin zona horaria, se asume UTC.
@@ -60,13 +63,48 @@ function descargarBlob(blob, nombreArchivo) {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    setTimeout(() => URL.revokeObjectURL(link.href), 60000);
 }
 
 // Extensión segura de una URL de foto
 function extensionDeUrl(url) {
     const ext = url.split('?')[0].split('.').pop();
     return (ext && ext.length <= 5) ? ext : 'jpg';
+}
+
+// Ejecuta tareas asíncronas con un máximo de "limite" en paralelo
+async function ejecutarConLimite(tareas, limite, alProgresar) {
+    let siguiente = 0;
+    let completadas = 0;
+    const trabajadores = Array.from({ length: limite }, async () => {
+        while (siguiente < tareas.length) {
+            const mi = siguiente++;
+            await tareas[mi]();
+            completadas++;
+            if (alProgresar) alProgresar(completadas, tareas.length);
+        }
+    });
+    await Promise.all(trabajadores);
+}
+
+// Obtiene la foto: primero fetch normal; si falla, vía Storage de Supabase (usa tu sesión)
+async function obtenerBlobFoto(url) {
+    try {
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const blob = await resp.blob();
+        if (blob.size === 0) throw new Error('Archivo vacío');
+        return blob;
+    } catch (errFetch) {
+        // Formato: .../storage/v1/object/(public|sign|authenticated)/<bucket>/<ruta>
+        const m = url.split('?')[0].match(/\/storage\/v1\/object\/(?:public|sign|authenticated)\/([^/]+)\/(.+)$/);
+        if (!m) throw errFetch;
+        const bucket = m[1];
+        const ruta = decodeURIComponent(m[2]);
+        const { data, error } = await clienteSupabase.storage.from(bucket).download(ruta);
+        if (error) throw error;
+        return data;
+    }
 }
 
 // === CARGAR TODOS LOS REGISTROS (Supabase devuelve máx. 1000 por consulta) ===
@@ -273,33 +311,34 @@ async function descargarFotosSuministro(index, boton) {
 
     try {
         const zip = new JSZip();
-        const carpeta = zip.folder(String(reg.suministro));
+        let exitosas = 0, fallidas = 0, primerError = null;
 
-        const resultados = await Promise.all(reg.fotos_urls.map(async (url, i) => {
+        const tareas = reg.fotos_urls.map((url, i) => async () => {
             try {
-                const response = await fetch(url);
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                const blob = await response.blob();
-                carpeta.file(`foto_${i + 1}.${extensionDeUrl(url)}`, blob);
-                return true;
+                const blob = await obtenerBlobFoto(url);
+                // La ruta crea la carpeta solo si la foto se descargó
+                zip.file(`${reg.suministro}/foto_${i + 1}.${extensionDeUrl(url)}`, blob);
+                exitosas++;
             } catch (err) {
+                fallidas++;
+                if (!primerError) primerError = `${err.message || err}`;
                 console.error(`Error foto ${i + 1} del suministro ${reg.suministro}:`, err);
-                return false;
             }
-        }));
+        });
 
-        if (!resultados.some(Boolean)) {
-            throw new Error('No se pudo descargar ninguna foto.');
+        await ejecutarConLimite(tareas, CONCURRENCIA_FOTOS);
+
+        if (exitosas === 0) {
+            throw new Error(`No se pudo descargar ninguna foto. Primer error: ${primerError}`);
         }
 
-        const contenidoZip = await zip.generateAsync({ type: 'blob' });
+        const contenidoZip = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
         descargarBlob(contenidoZip, `Fotos_${reg.suministro}.zip`);
 
-        const fallidas = resultados.filter(r => !r).length;
         if (fallidas > 0) alert(`Se omitieron ${fallidas} foto(s) que no se pudieron descargar.`);
     } catch (error) {
         console.error('Error generando ZIP del suministro:', error);
-        alert('Ocurrió un error al generar el archivo ZIP.');
+        alert('No se pudo generar el ZIP.\n' + (error.message || error));
     } finally {
         boton.innerHTML = textoOriginal;
         boton.disabled = false;
@@ -351,43 +390,58 @@ document.getElementById('btnExportarFotos').addEventListener('click', async () =
 
     const btn = document.getElementById('btnExportarFotos');
     const textoOriginal = btn.innerHTML;
-    
-    btn.innerHTML = '⏳ Generando ZIP...';
     btn.disabled = true;
     btn.style.opacity = '0.7';
 
     try {
         const zip = new JSZip();
-        const promesasFetch = [];
+        const tareas = [];
+        const contadorPorSuministro = new Map();
+        let fallidas = 0, exitosas = 0, primerError = null;
 
         registrosGlobales.forEach(reg => {
-            if (reg.fotos_urls && reg.fotos_urls.length > 0) {
-                const carpetaSuministro = zip.folder(String(reg.suministro));
+            if (!Array.isArray(reg.fotos_urls) || reg.fotos_urls.length === 0) return;
 
-                reg.fotos_urls.forEach((url, index) => {
-                    const promesa = fetch(url)
-                        .then(response => {
-                            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                            return response.blob();
-                        })
-                        .then(blob => {
-                            carpetaSuministro.file(`foto_${index + 1}.${extensionDeUrl(url)}`, blob);
-                        })
-                        .catch(err => console.error(`Error foto suministro ${reg.suministro}:`, err));
+            // Carpeta única: si el suministro se repite, se agrega sufijo _2, _3...
+            const clave = String(reg.suministro);
+            const n = (contadorPorSuministro.get(clave) || 0) + 1;
+            contadorPorSuministro.set(clave, n);
+            const nombreCarpeta = n === 1 ? clave : `${clave}_${n}`;
 
-                    promesasFetch.push(promesa);
+            reg.fotos_urls.forEach((url, i) => {
+                tareas.push(async () => {
+                    try {
+                        const blob = await obtenerBlobFoto(url);
+                        // La ruta crea la carpeta solo si la foto existe
+                        zip.file(`${nombreCarpeta}/foto_${i + 1}.${extensionDeUrl(url)}`, blob);
+                        exitosas++;
+                    } catch (err) {
+                        fallidas++;
+                        if (!primerError) primerError = `${err.message || err} — ${url}`;
+                        console.error(`Error foto ${i + 1} del suministro ${reg.suministro}:`, err);
+                    }
                 });
-            }
+            });
         });
 
-        await Promise.all(promesasFetch);
+        if (tareas.length === 0) return alert('No hay fotos para exportar.');
 
-        const contenidoZip = await zip.generateAsync({ type: 'blob' });
+        await ejecutarConLimite(tareas, CONCURRENCIA_FOTOS, (hecho, total) => {
+            btn.innerHTML = `⏳ Descargando ${hecho}/${total}`;
+        });
+
+        if (exitosas === 0) {
+            throw new Error(`Ninguna foto se pudo descargar. Primer error: ${primerError}`);
+        }
+
+        btn.innerHTML = '⏳ Armando ZIP...';
+        const contenidoZip = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
         descargarBlob(contenidoZip, `Fotos_Suministros_${new Date().toISOString().split('T')[0]}.zip`);
 
+        if (fallidas > 0) alert(`Se omitieron ${fallidas} foto(s). Primer error: ${primerError}`);
     } catch (error) {
         console.error('Error general generando el ZIP: ', error);
-        alert('Ocurrió un error al intentar generar el archivo ZIP.');
+        alert('No se pudo generar el ZIP.\n' + (error.message || error));
     } finally {
         btn.innerHTML = textoOriginal;
         btn.disabled = false;
